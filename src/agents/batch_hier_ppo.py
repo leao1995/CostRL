@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tianshou.data import Batch, to_numpy, to_torch, to_torch_as
 
 from src.environments import get_environment
-from environments.batch_acquire_env import AcquireEnv
+from src.environments.batch_acquire_env import AcquireEnv
 from src.policies.batch_hier_ppo import *
 
 class Agent(object):
@@ -191,7 +191,7 @@ class Runner(object):
     def _random_acquisition(self, env, state):
         N = np.random.randint(0, env.num_measurable_features+1) # number of acquired features
         idx = np.random.choice(env.measurable_feature_ids, N, replace=False)
-        mask = [i in idx or i not in self.measurable_feature_ids for i in range(self.num_observable_features)]
+        mask = [i in idx or i not in env.measurable_feature_ids for i in range(env.num_observable_features)]
         mask = np.array(mask, dtype=np.float32)
         observed = state * mask
 

@@ -238,7 +238,7 @@ class Runner(object):
         batches = []
 
         obs, done = env.reset(), False
-        history = History(env.observation_space.shape, self.hps.agent.max_history_length)
+        history = History(env.observation_space['observed'].shape, self.hps.agent.max_history_length)
         while not done:
             state = env.state
             inputs = self._prepare_inputs(state, obs, history.get())

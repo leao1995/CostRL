@@ -24,17 +24,18 @@ class SepsisEnv(gym.Env):
         if reward != 0:
             done = True
         
-        state_vec = self.mdp.state.get_state_vector().astype(np.float32)
+        state_vec = self.mdp.state.get_state_vector()
         state_vec = np.append(state_vec, self.mdp.state.diabetic_idx)
+        state_vec = state_vec.astype(np.float32)
 
         return state_vec, reward, done, {}
 
     def reset(self):
         self.mdp.state = self.mdp.get_new_state()
-        state_vec = self.mdp.state.get_state_vector().astype(np.float32)
+        state_vec = self.mdp.state.get_state_vector()
         state_vec = np.append(state_vec, self.mdp.state.diabetic_idx)
 
-        return state_vec
+        return state_vec.astype(np.float32)
 
     def seed(self, seed=None):
         seed = seeding.np_random(seed)

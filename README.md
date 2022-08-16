@@ -1,4 +1,4 @@
-# Towards Const Sensitive Decision Making
+# Towards Cost Sensitive Decision Making
 
 ## Usage
 ```bash

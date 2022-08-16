@@ -21,7 +21,7 @@ class ConcatAFAWrapper(gym.Wrapper):
                 'availability': spaces.Box(0, 1, shape=(self.num_measurable_features+self.num_actions,))
             }
         )
-        self.action_space = spaces.Discrete(self.num_features+self.num_actions)
+        self.action_space = spaces.Discrete(self.num_measurable_features+self.num_actions)
 
     def _get_init_mask(self):
         init_mask = [i not in self.measurable_feature_ids for i in range(self.num_observable_features)]

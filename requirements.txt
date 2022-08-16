@@ -1,2 +1,4 @@
-nflow
-tianshou
+nflow==0.14
+gym==0.23.1
+tianshou==0.4.9
+pyyaml
