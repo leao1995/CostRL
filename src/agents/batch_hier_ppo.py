@@ -241,6 +241,7 @@ class Runner(object):
                 obs_next, reward, terminate, info = afa_env.step(to_numpy(afa_res.act)[0])
                 assert terminate, "should acquire all features in a batch"
                 if self.hps.agent.terminal_reward_weight > 0:
+                    inputs = self._prepare_inputs(obs_next)
                     term_rew = self._terminal_reward(inputs)
                     reward += term_rew * self.hps.agent.terminal_reward_weight
                     metrics['afa_term_reward'] += term_rew

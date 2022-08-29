@@ -14,11 +14,16 @@ class CatObsActor(nn.Module):
         embed_dim = self.cat_embed.output_dim
         self.actor = MLP(embed_dim, config.actor_layers, num_actions)
 
+        self.temperature = 1.0
+
         assert logit_constraint is False, 'fully observed actor do not need to postprocess logits'
+
+    def set_temperature(self, temp):
+        self.temperature = temp
 
     def forward(self, obs):
         embed = self.cat_embed(obs.long())
-        logits = self.actor(embed)
+        logits = self.actor(embed) / self.temperature
         dist = Categorical(logits=logits)
         return dist
 
@@ -30,12 +35,17 @@ class CatPObsActor(nn.Module):
         embed_dim = self.cat_embed.output_dim
         self.actor = MLP(embed_dim, config.actor_layers, num_actions)
 
+        self.temperature = 1.0
+
         self.logit_constraint = logit_constraint
+
+    def set_temperature(self, temp):
+        self.temperature = temp
 
     def forward(self, obs):
         cat_input = (obs.observed + 1) * obs.mask # 0 means unobserved
         embed = self.cat_embed(cat_input.long())
-        logits = self.actor(embed)
+        logits = self.actor(embed) / self.temperature
         if self.logit_constraint:
             availability = obs.availability.bool()
             min_value = torch.tensor(-1e12).to(logits)
@@ -58,12 +68,17 @@ class BeliefSetActor(nn.Module):
         embed_dim = input_dim
         self.actor = MLP(embed_dim, config.actor_layers, num_actions)
 
+        self.temperature = 1.0
+
         self.logit_constraint = logit_constraint
+
+    def set_temperature(self, temp):
+        self.temperature = temp
 
     def forward(self, obs):
         assert obs.belief.ndim == 3
         embed = self.embed_net(obs.belief)
-        logits = self.actor(embed)
+        logits = self.actor(embed) / self.temperature
         if self.logit_constraint:
             availability = obs.availability.bool()
             min_value = torch.tensor(-1e12).to(logits)

@@ -10,6 +10,9 @@ class ActorCritic(nn.Module):
         self.actor = actor
         self.critic = critic
 
+    def set_temperature(self, temp):
+        self.actor.set_temperature(temp)
+
     def forward(self, obs):
         dist = self.actor(obs)
         if self.training:
