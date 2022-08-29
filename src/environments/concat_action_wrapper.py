@@ -3,8 +3,6 @@ from gym import spaces
 import numpy as np
 from copy import deepcopy
 
-from tianshou.data import Batch
-
 class ConcatAFAWrapper(gym.Wrapper):
     def __init__(self, env, cost):
         super().__init__(env)
@@ -48,11 +46,11 @@ class ConcatAFAWrapper(gym.Wrapper):
         self.mask = self._get_init_mask()
         observed = self.state * self.mask
 
-        return Batch({
+        return {
             'observed': observed,
             'mask': self.mask.copy(),
             'availability': self._get_availability()
-        })
+        }
 
     def _parse_action(self, action):
         if action < self.num_measurable_features:
@@ -82,10 +80,10 @@ class ConcatAFAWrapper(gym.Wrapper):
         info['afa_action'] = afa_action if is_acquisition else None
         info['fully_observed'] = deepcopy(self.state)
 
-        obs = Batch({
+        obs = {
             'observed': self.state * self.mask,
             'mask': self.mask.copy(),
             'availability': self._get_availability()
-        })
+        }
 
         return obs, reward, done, info

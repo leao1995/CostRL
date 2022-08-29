@@ -3,8 +3,6 @@ from gym import spaces
 import numpy as np
 from copy import deepcopy
 
-from tianshou.data import Batch
-
 class BatchAFAWrapper(gym.Wrapper):
     def __init__(self, env, cost):
         super().__init__(env)
@@ -39,7 +37,10 @@ class BatchAFAWrapper(gym.Wrapper):
     def _get_observation(self):
         observed = self.state * self.mask
 
-        return Batch(observed=observed, mask=self.mask.copy())
+        return {
+            'observed': observed, 
+            'mask': self.mask.copy()
+        }
 
     def reset(self):
         self.state = self.env.reset()

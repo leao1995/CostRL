@@ -8,6 +8,7 @@ import json
 import pickle
 import gzip
 from collections import defaultdict, deque
+from typing import Optional, Union, Any
 from torch.utils.tensorboard import SummaryWriter
 
 from gym import spaces
@@ -74,7 +75,12 @@ class Agent(object):
         obs = to_torch(batch.obs, device=self.hps.running.device)
         return obs
 
-    def __call__(self, batch: Batch) -> Batch:
+    def __call__(
+        self, 
+        batch: Batch, 
+        state: Optional[Union[dict, Batch, np.ndarray]] = None,
+        **kwargs: Any,
+        ) -> Batch:
         inputs = self._prepare_inputs(batch)
         afa_res = self.afa_policy(inputs)
         tsk_res = self.tsk_policy(inputs)
@@ -324,8 +330,9 @@ class Runner(object):
         self.agent.afa_policy.set_temperature(5.0) # high temperature for uniform sampling
         for step in range(self.hps.running.stage1_iterations):
             results = collector.collect(n_episode=self.hps.running.num_train_episodes_per_collect)
+            metrics = _gather_results(results)
             afa_batch, tsk_batch = self.preprocess_fn(collector)
-            for k, v in results.items():
+            for k, v in metrics.items():
                 writer.add_scalar(f'stage1_collect/{k}', v, step)
             losses = self.agent.learn(afa_batch, tsk_batch)
             for k, v in losses.items():
@@ -349,8 +356,9 @@ class Runner(object):
         self.agent.afa_policy.set_temperature(1.0)
         for step in range(self.hps.running.stage2_iterations):
             results = collector.collect(n_episode=self.hps.running.num_train_episodes_per_collect)
+            metrics = _gather_results(results)
             afa_batch, tsk_batch = self.preprocess_fn(collector)
-            for k, v in results.items():
+            for k, v in metrics.items():
                 writer.add_scalar(f'stage2_collect/{k}', v, step)
             losses = self.agent.learn(afa_batch, tsk_batch)
             for k, v in losses.items():
@@ -420,6 +428,17 @@ class Runner(object):
         with open(f'{self.hps.running.exp_dir}/trajectory.pkl', 'wb') as f:
             pickle.dump(trajectory, f)
 
+
+def _gather_results(results):
+    metrics = {
+        "num_episodes": results["n/ep"],
+        "num_transitions": results["n/st"],
+        "episode_reward": results["rew"],
+        "episode_length": results["len"],
+        "episode_reward_std": results["rew_std"],
+        "episode_length_std": results["len_std"]
+    }
+    return metrics
 
 def _gather_traj(buffer):
     batch, _ = buffer.sample(0)

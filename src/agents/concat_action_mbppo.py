@@ -241,6 +241,7 @@ class Runner(object):
         history = History(env.observation_space['observed'].shape, self.hps.agent.max_history_length)
         while not done:
             state = env.state
+            obs = Batch(obs)
             inputs = self._prepare_inputs(state, obs, history.get())
             res = self.agent.policy(inputs)
             act = to_numpy(res.act)[0]

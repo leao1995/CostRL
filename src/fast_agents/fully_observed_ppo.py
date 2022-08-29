@@ -8,6 +8,7 @@ import json
 import pickle
 import gzip
 from collections import defaultdict, deque
+from typing import Optional, Union, Any
 from torch.utils.tensorboard import SummaryWriter
 
 from gym import spaces
@@ -62,7 +63,12 @@ class Agent(object):
         obs = to_torch(batch.obs, device=self.hps.running.device)
         return obs
 
-    def __call__(self, batch: Batch) -> Batch:
+    def __call__(
+        self, 
+        batch: Batch, 
+        state: Optional[Union[dict, Batch, np.ndarray]] = None,
+        **kwargs: Any,
+        ) -> Batch:
         inputs = self._prepare_inputs(batch)
         return self.policy(inputs)
 
@@ -187,8 +193,9 @@ class Runner(object):
         self.agent.set_update_status(True)
         for step in range(self.hps.running.iterations):
             results = collector.collect(n_episode=self.hps.running.num_train_episodes_per_collect)
+            metrics = _gather_results(results)
             batch = self.preprocess_fn(collector)
-            for k, v in results.items():
+            for k, v in metrics.items():
                 writer.add_scalar(f'collect/{k}', v, step)
             losses = self.agent.learn(batch)
             for k, v in losses.items():
@@ -258,13 +265,24 @@ class Runner(object):
         with open(f'{self.hps.running.exp_dir}/trajectory.pkl', 'wb') as f:
             pickle.dump(trajectory, f)
 
+
+def _gather_results(results):
+    metrics = {
+        "num_episodes": results["n/ep"],
+        "num_transitions": results["n/st"],
+        "episode_reward": results["rew"],
+        "episode_length": results["len"],
+        "episode_reward_std": results["rew_std"],
+        "episode_length_std": results["len_std"]
+    }
+    return metrics
         
 def _gather_traj(buffer):
     batch, _ = buffer.sample(0)
     keys = ['obs', 'act', 'rew', 'done', 'info']
     assert np.all(k in batch.keys() for k in keys)
     traj = Batch()
-    traj.obs = Batch(observed=batch.obs.observed, mask=batch.obs.mask)
+    traj.obs = batch.obs
     traj.act = batch.act
     traj.rew = batch.rew
     traj.done = batch.done
@@ -274,11 +292,9 @@ def _gather_traj(buffer):
 def _gather_metrics(traj):
     episode_length = len(traj)
     episode_reward = sum(traj[i].rew for i in range(len(traj)))
-    task_reward = sum(traj[i].info.task_reward for i in range(len(traj)))
-    num_acquisitions = sum(traj[i].info.num_acquisitions for i in range(len(traj)))
+    task_reward = sum(traj[i].rew for i in range(len(traj)))
     return Batch(
         episode_length=np.array([episode_length]),
         episode_reward=np.array([episode_reward]),
         task_reward=np.array([task_reward]),
-        num_acquisitions=np.array([num_acquisitions]),
     )

@@ -4,8 +4,6 @@ import numpy as np
 from collections import deque
 from copy import deepcopy
 
-from tianshou.data import Batch
-
 '''
 graphical model:
     s0 -  s1 - s2
@@ -83,12 +81,12 @@ class HistAugWrapper(gym.Wrapper):
         self.last_observed = deepcopy(obs['observed'])
         self.last_mask = deepcopy(obs['mask'])
 
-        obs['hist'] = Batch(
-            full=np.array(self.hist_full),
-            observed=np.array(self.hist_observed),
-            mask=np.array(self.hist_mask),
-            action=np.array(self.hist_act)
-        )
+        obs['hist'] = {
+            'full': np.array(self.hist_full),
+            'observed': np.array(self.hist_observed),
+            'mask': np.array(self.hist_mask),
+            'action': np.array(self.hist_act)
+        }
         obs['full'] = deepcopy(self.env.state)
 
         return obs
@@ -107,12 +105,12 @@ class HistAugWrapper(gym.Wrapper):
         self.last_observed = deepcopy(obs['observed'])
         self.last_mask = deepcopy(obs['mask'])
 
-        obs['hist'] = Batch(
-            full=np.array(self.hist_full),
-            observed=np.array(self.hist_observed),
-            mask=np.array(self.hist_mask),
-            action=np.array(self.hist_act)
-        )
+        obs['hist'] = {
+            'full': np.array(self.hist_full),
+            'observed': np.array(self.hist_observed),
+            'mask': np.array(self.hist_mask),
+            'action': np.array(self.hist_act)
+        }
         obs['full'] = deepcopy(self.env.state)
 
         return obs, reward, done, info

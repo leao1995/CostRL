@@ -3,8 +3,6 @@ from gym import spaces
 import numpy as np
 from copy import deepcopy
 
-from tianshou.data import Batch
-
 class SequeAFAWrapper(gym.Wrapper):
     def __init__(self, env, cost):
         super().__init__(env)
@@ -54,7 +52,11 @@ class SequeAFAWrapper(gym.Wrapper):
         observed = self.state * self.mask
         availability = self._get_availability()
 
-        return Batch(observed=observed, mask=self.mask.copy(), availability=availability)
+        return {
+            'observed': observed, 
+            'mask': self.mask.copy(), 
+            'availability': availability
+        }
 
     def reset(self):
         self.state = self.env.reset()

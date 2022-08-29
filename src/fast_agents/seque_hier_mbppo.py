@@ -8,6 +8,7 @@ import json
 import pickle
 import gzip
 from collections import defaultdict, deque
+from typing import Optional, Union, Any
 from torch.utils.tensorboard import SummaryWriter
 
 from gym import spaces
@@ -84,10 +85,10 @@ class Agent(object):
         torch.save(save_dict, f'{self.hps.running.exp_dir}/{fname}.pth')
 
     def _prepare_inputs(self, batch):
-        full = np.concatenate([batch.hist.full, np.expand_dims(batch.obs.full, axis=1)], axis=1)
-        observed = np.concatenate([batch.hist.observed, np.expand_dims(batch.obs.observed, axis=1)], axis=1)
-        mask = np.concatenate([batch.hist.mask, np.expand_dims(batch.obs.mask, axis=1)], axis=1)
-        action = batch.hist.action
+        full = np.concatenate([batch.obs.hist.full, np.expand_dims(batch.obs.full, axis=1)], axis=1)
+        observed = np.concatenate([batch.obs.hist.observed, np.expand_dims(batch.obs.observed, axis=1)], axis=1)
+        mask = np.concatenate([batch.obs.hist.mask, np.expand_dims(batch.obs.mask, axis=1)], axis=1)
+        action = batch.obs.hist.action
 
         full = to_torch(full, dtype=torch.float32, device=self.hps.running.device)
         observed = to_torch(observed, dtype=torch.float32, device=self.hps.running.device)
@@ -104,7 +105,12 @@ class Agent(object):
 
         return obs
 
-    def __call__(self, batch: Batch) -> Batch:
+    def __call__(
+        self, 
+        batch: Batch, 
+        state: Optional[Union[dict, Batch, np.ndarray]] = None,
+        **kwargs: Any,
+        ) -> Batch:
         inputs = self._prepare_inputs(batch)
         afa_res = self.afa_policy(inputs)
         tsk_res = self.tsk_policy(inputs)
@@ -397,8 +403,9 @@ class Runner(object):
         self.agent.tsk_policy.set_temperature(5.0)
         for step in range(self.hps.running.stage1_iterations):
             results = collector.collect(n_episode=self.hps.running.num_train_episodes_per_collect)
+            metrics = _gather_results(results)
             afa_batch, tsk_batch = self.preprocess_fn(collector)
-            for k, v in results.items():
+            for k, v in metrics.items():
                 writer.add_scalar(f'stage1_collect/{k}', v, step)
             losses = self.agent.learn(afa_batch, tsk_batch)
             for k, v in losses.items():
@@ -418,8 +425,9 @@ class Runner(object):
         self.agent.tsk_policy.set_temperature(1.0)
         for step in range(self.hps.running.stage2_iterations):
             results = collector.collect(n_episode=self.hps.running.num_train_episodes_per_collect)
+            metrics = _gather_results(results)
             afa_batch, tsk_batch = self.preprocess_fn(collector)
-            for k, v in results.items():
+            for k, v in metrics.items():
                 writer.add_scalar(f'stage2_collect/{k}', v, step)
             losses = self.agent.learn(afa_batch, tsk_batch)
             for k, v in losses.items():
@@ -444,8 +452,9 @@ class Runner(object):
         self.agent.tsk_policy.set_temperature(1.0)
         for step in range(self.hps.running.stage3_iterations):
             results = collector.collect(n_episode=self.hps.running.num_train_episodes_per_collect)
+            metrics = _gather_results(results)
             afa_batch, tsk_batch = self.preprocess_fn(collector)
-            for k, v in results.items():
+            for k, v in metrics.items():
                 writer.add_scalar(f'stage3_collect/{k}', v, step)
             losses = self.agent.learn(afa_batch, tsk_batch)
             for k, v in losses.items():
@@ -515,6 +524,17 @@ class Runner(object):
         with open(f'{self.hps.running.exp_dir}/trajectory.pkl', 'wb') as f:
             pickle.dump(trajectory, f)
 
+
+def _gather_results(results):
+    metrics = {
+        "num_episodes": results["n/ep"],
+        "num_transitions": results["n/st"],
+        "episode_reward": results["rew"],
+        "episode_length": results["len"],
+        "episode_reward_std": results["rew_std"],
+        "episode_length_std": results["len_std"]
+    }
+    return metrics
 
 def _gather_traj(buffer):
     batch, _ = buffer.sample(0)
