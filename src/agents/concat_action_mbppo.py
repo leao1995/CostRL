@@ -16,6 +16,7 @@ from src.environments import get_environment
 from src.environments.concat_action_wrapper import ConcatAFAWrapper
 from src.models import get_model
 from src.policies.concat_action_mbppo import *
+from src.utils.visualizer import plot_dict
 
 class Agent(object):
     def __init__(self, hps):
@@ -306,8 +307,10 @@ class Runner(object):
         self.agent.set_training_status(model=True, policy=True)
         writer = SummaryWriter(f'{self.hps.running.exp_dir}/summary')
 
+        reward_history = []
         best_reward = -np.inf
 
+        logging.info('=====Stage 1=====')
         self.agent.set_update_status(model=True, policy=True)
         for step in range(self.hps.running.iterations):
             batch, metrics = self.collect(env)
@@ -319,6 +322,7 @@ class Runner(object):
 
             # validation
             if step % self.hps.running.validation_freq == 0:
+                logging.info(f'Step: {step}')
                 metrics = self.valid()
                 for k, v in metrics.items():
                     writer.add_scalar(f'valid/{k}', v, step)
@@ -326,6 +330,9 @@ class Runner(object):
                 if metrics['task_reward'] >= best_reward:
                     best_reward = metrics['task_reward']
                     self.agent.save()
+                # plot
+                reward_history.append(metrics['task_reward'])
+                plot_dict(f'{self.hps.running.exp_dir}/reward.png', {'reward': reward_history})
 
     def valid(self):
         env = get_environment(self.hps.environment)

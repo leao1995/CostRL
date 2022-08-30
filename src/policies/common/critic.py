@@ -55,3 +55,19 @@ class BeliefSetCritic(nn.Module):
         values = self.critic(embed)
 
         return values.squeeze(dim=1)
+
+class BeliefEnsCritic(nn.Module):
+    def __init__(self, config, belief_dim):
+        super().__init__()
+
+        self.embed_net = MLP(belief_dim, config.belief_embed_dims)
+        embed_dim = self.embed_net.output_dim
+        self.critic = MLP(embed_dim, config.critic_layers, 1)
+
+    def forward(self, obs):
+        assert obs.belief.ndim == 3
+        embed = self.embed_net(obs.belief)
+        values = self.critic(embed)
+        values = values.mean(dim=1)
+
+        return values.squeeze(dim=1)

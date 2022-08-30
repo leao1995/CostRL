@@ -85,3 +85,30 @@ class BeliefSetActor(nn.Module):
             logits = torch.where(availability, logits, min_value)
         dist = Categorical(logits=logits)
         return dist
+
+class BeliefEnsActor(nn.Module):
+    def __init__(self, config, belief_dim, num_actions, logit_constraint):
+        super().__init__()
+
+        self.embed_net = MLP(belief_dim, config.belief_embed_dims)
+        embed_dim = self.embed_net.output_dim
+        self.actor = MLP(embed_dim, config.actor_layers, num_actions)
+
+        self.temperature = 1.0
+
+        self.logit_constraint = logit_constraint
+
+    def set_temperature(self, temp):
+        self.temperature = temp
+
+    def forward(self, obs):
+        assert obs.belief.ndim == 3
+        embed = self.embed_net(obs.belief)
+        logits = self.actor(embed) / self.temperature
+        if self.logit_constraint:
+            availability = obs.availability.bool().unsqueeze(dim=1)
+            min_value = torch.tensor(-1e12).to(logits)
+            logits = torch.where(availability, logits, min_value)
+        probs = torch.softmax(logits, dim=2).mean(dim=1)
+        dist = Categorical(probs=probs)
+        return dist

@@ -15,6 +15,7 @@ from tianshou.data import Batch, to_numpy, to_torch, to_torch_as
 from src.environments import get_environment
 from src.environments.batch_acquire_env import AcquireEnv
 from src.policies.batch_hier_ppo import *
+from src.utils.visualizer import plot_dict
 
 class Agent(object):
     def __init__(self, hps):
@@ -206,7 +207,7 @@ class Runner(object):
 
         return obs
 
-    def _terminal_reward(self, inputs):
+    def _terminal_reward(self, inputs, metrics):
         if self.hps.agent.terminal_reward_type == 'value':
             rew = to_numpy(self.agent.tsk_policy.critic(inputs))[0]
         elif self.hps.agent.terminal_reward_type == 'entropy':
@@ -215,6 +216,8 @@ class Runner(object):
             rew1 = to_numpy(self.agent.tsk_policy.critic(inputs))[0]
             rew2 = - to_numpy(self.agent.tsk_policy.actor(inputs).entropy())[0]
             rew = rew1 + rew2
+            metrics['tsk_value_reward'] = float(rew1)
+            metrics['tsk_entropy_reward'] = float(rew2)
         else:
             raise NotImplementedError()
 
@@ -242,7 +245,7 @@ class Runner(object):
                 assert terminate, "should acquire all features in a batch"
                 if self.hps.agent.terminal_reward_weight > 0:
                     inputs = self._prepare_inputs(obs_next)
-                    term_rew = self._terminal_reward(inputs)
+                    term_rew = self._terminal_reward(inputs, metrics)
                     reward += term_rew * self.hps.agent.terminal_reward_weight
                     metrics['afa_term_reward'] += term_rew
                 afa_data = Batch(
@@ -326,9 +329,11 @@ class Runner(object):
         self.agent.set_training_status(afa=True, tsk=True)
         writer = SummaryWriter(f'{self.hps.running.exp_dir}/summary')
 
+        reward_history = []
         best_reward = -np.inf
 
         # stage1: train tsk_policy  rand_afa=True  rand_tsk=False
+        logging.info('=====Stage 1=====')
         self.agent.set_update_status(afa=False, tsk=True)
         for step in range(self.hps.running.stage1_iterations):
             afa_batch, tsk_batch, metrics = self.collect(env, rand_afa=True, rand_tsk=False)
@@ -352,6 +357,7 @@ class Runner(object):
         self.agent.save('stage1_last', with_optim=True)
 
         # stage2: joint training
+        logging.info('=====Stage 2=====')
         self.agent.set_update_status(afa=True, tsk=True)
         for step in range(self.hps.running.stage2_iterations):
             afa_batch, tsk_batch, metrics = self.collect(env, rand_afa=False, rand_tsk=False)
@@ -363,6 +369,7 @@ class Runner(object):
             
             # validation
             if step % self.hps.running.validation_freq == 0:
+                logging.info(f'Step: {step}')
                 metrics = self.valid(rand_afa=False, rand_tsk=False)
                 for k, v in metrics.items():
                     writer.add_scalar(f'stage2_valid/{k}', v, step)
@@ -370,6 +377,9 @@ class Runner(object):
                 if metrics['task_reward'] >= best_reward:
                     best_reward = metrics['task_reward']
                     self.agent.save()
+                # plot
+                reward_history.append(metrics['task_reward'])
+                plot_dict(f'{self.hps.running.exp_dir}/reward.png', {'reward': reward_history})
 
     def valid(self, rand_afa, rand_tsk):
         env = get_environment(self.hps.environment)
