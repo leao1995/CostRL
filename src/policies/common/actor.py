@@ -52,6 +52,36 @@ class CatPObsActor(nn.Module):
             logits = torch.where(availability, logits, min_value)
         dist = Categorical(logits=logits)
         return dist
+    
+class CatPHistActor(nn.Module):
+    def __init__(self, config, num_embeddings, num_actions, logit_constraint):
+        super().__init__()
+
+        self.cat_embed = EmbeddingPool(num_embeddings, config.categorical_embed_dim)
+        hist_dim = self.cat_embed.output_dim
+        self.embed_net = MLP(hist_dim, config.hist_embed_dims)
+        embed_dim = self.embed_net.output_dim
+        self.actor = MLP(embed_dim, config.actor_layers, num_actions)
+
+        self.temperature = 1.0
+
+        self.logit_constraint = logit_constraint
+
+    def set_temperature(self, temp):
+        self.temperature = temp
+
+    def forward(self, obs):
+        cat_input = (obs.hist.observed + 1) * obs.hist.mask # 0 means unobserved
+        hist_embed = self.cat_embed(cat_input.long())
+        assert hist_embed.ndim == 3
+        embed = self.embed_net(hist_embed).mean(dim=1)
+        logits = self.actor(embed) / self.temperature
+        if self.logit_constraint:
+            availability = obs.availability.bool()
+            min_value = torch.tensor(-1e12).to(logits)
+            logits = torch.where(availability, logits, min_value)
+        dist = Categorical(logits=logits)
+        return dist
 
 class BeliefSetActor(nn.Module):
     def __init__(self, config, belief_dim, num_actions, logit_constraint):

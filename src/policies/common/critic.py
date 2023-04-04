@@ -33,6 +33,25 @@ class CatPObsCritic(nn.Module):
         values = self.critic(embed)
 
         return values.squeeze(dim=1)
+    
+class CatPHistCritic(nn.Module):
+    def __init__(self, config, num_embeddings):
+        super().__init__()
+
+        self.cat_embed = EmbeddingPool(num_embeddings, config.categorical_embed_dim)
+        hist_dim = self.cat_embed.output_dim
+        self.embed_net = MLP(hist_dim, config.hist_embed_dims)
+        embed_dim = self.embed_net.output_dim
+        self.critic = MLP(embed_dim, config.critic_layers, 1)
+
+    def forward(self, obs):
+        cat_input = (obs.hist.observed + 1) * obs.hist.mask # 0 means unobserved
+        hist_embed = self.cat_embed(cat_input.long())
+        assert hist_embed.ndim == 3
+        embed = self.embed_net(hist_embed).mean(dim=1)
+        values = self.critic(embed)
+
+        return values.squeeze(dim=1)
 
 class BeliefSetCritic(nn.Module):
     def __init__(self, config, belief_dim):

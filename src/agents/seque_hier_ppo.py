@@ -25,7 +25,7 @@ class Agent(object):
         # environment specific hyperparameters
         obs_high = env.observation_space.high
         num_embeddings = list(map(int, obs_high + 2))
-        num_afa_actions = env.num_measurable_features + 1
+        num_afa_actions = env.num_measurable_features + 1 # termination action
         num_tsk_actions = env.action_space.n
 
         self.afa_policy = build_afa_policy(self.hps.policy, num_embeddings, num_afa_actions)

@@ -1,4 +1,3 @@
-from nis import cat
 from .common.actor import CatPObsActor
 from .common.critic import CatPObsCritic
 from .common.actor_critic import ActorCritic

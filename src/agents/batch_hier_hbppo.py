@@ -13,9 +13,8 @@ from torch.utils.tensorboard import SummaryWriter
 from tianshou.data import Batch, to_numpy, to_torch, to_torch_as
 
 from src.environments import get_environment
-from src.environments.seque_acquire_env import AcquireEnv
-from src.models import get_model
-from src.policies.seque_hier_mbppo import *
+from src.environments.batch_acquire_env import AcquireEnv
+from src.policies.batch_hier_hbppo import *
 from src.utils.visualizer import plot_dict
 
 class Agent(object):
@@ -26,78 +25,58 @@ class Agent(object):
         # environment specific hyperparameters
         obs_high = env.observation_space.high
         num_embeddings = list(map(int, obs_high + 2))
-        num_afa_actions = env.num_measurable_features + 1
+        num_afa_actions = 2 ** env.num_measurable_features
         num_tsk_actions = env.action_space.n
 
-        self.model = get_model(self.hps.model, env.observation_space, env.action_space)
-        self.model.to(self.hps.running.device)
-        belief_dim = self.model.belief_dim
-        
-        self.afa_policy = build_afa_policy(self.hps.policy, belief_dim, num_afa_actions)
+        self.afa_policy = build_afa_policy(self.hps.policy, num_embeddings, num_afa_actions)
         self.afa_policy.to(self.hps.running.device)
-        self.tsk_policy = build_tsk_policy(self.hps.policy, belief_dim, num_tsk_actions)
+        self.tsk_policy = build_tsk_policy(self.hps.policy, num_embeddings, num_tsk_actions)
         self.tsk_policy.to(self.hps.running.device)
 
-        logging.info(f'\nmodel:\n{self.model}\n')
         logging.info(f'\nafa_policy:\n{self.afa_policy}\n')
         logging.info(f'\ntsk_policy:\n{self.tsk_policy}\n')
 
     def setup_optimizer(self):
-        self.model_optimizer = optim.Adam(self.model.parameters(), lr=self.hps.running.lr_model)
         self.afa_optimizer = optim.Adam(self.afa_policy.parameters(), lr=self.hps.running.lr_afa)
         self.tsk_optimizer = optim.Adam(self.tsk_policy.parameters(), lr=self.hps.running.lr_tsk)
 
-    def set_training_status(self, model, afa, tsk):
-        self.model.train(model)
+    def set_training_status(self, afa, tsk):
         self.afa_policy.train(afa)
         self.tsk_policy.train(tsk)
 
-    def set_update_status(self, model, afa, tsk):
-        self.update_mod = model
+    def set_update_status(self, afa, tsk):
         self.update_afa = afa
         self.update_tsk = tsk
 
     def load(self, fname='agent', with_optim=False):
         load_dict = torch.load(f'{self.hps.running.exp_dir}/{fname}.pth')
-        self.model.load_state_dict(load_dict['model'])
         self.afa_policy.load_state_dict(load_dict['afa'])
         self.tsk_policy.load_state_dict(load_dict['tsk'])
         if with_optim:
-            self.model_optimizer.load_state_dict(load_dict['model_optim'])
             self.afa_optimizer.load_state_dict(load_dict['afa_optim'])
             self.tsk_optimizer.load_state_dict(load_dict['tsk_optim'])
 
     def save(self, fname='agent', with_optim=False):
         save_dict = {
-            'model': self.model.state_dict(),
             'afa': self.afa_policy.state_dict(),
             'tsk': self.tsk_policy.state_dict()
         }
         if with_optim:
-            save_dict['model_optim'] = self.model_optimizer.state_dict()
             save_dict['afa_optim'] = self.afa_optimizer.state_dict()
             save_dict['tsk_optim'] = self.tsk_optimizer.state_dict()
         torch.save(save_dict, f'{self.hps.running.exp_dir}/{fname}.pth')
 
     def _prepare_inputs(self, batch):
-        full = np.concatenate([batch.hist.full, np.expand_dims(batch.full, axis=1)], axis=1)
         observed = np.concatenate([batch.hist.observed, np.expand_dims(batch.obs.observed, axis=1)], axis=1)
         mask = np.concatenate([batch.hist.mask, np.expand_dims(batch.obs.mask, axis=1)], axis=1)
         action = batch.hist.action
 
-        full = to_torch(full, dtype=torch.float32, device=self.hps.running.device)
         observed = to_torch(observed, dtype=torch.float32, device=self.hps.running.device)
         mask = to_torch(mask, dtype=torch.float32, device=self.hps.running.device)
         action = to_torch(action, dtype=torch.long, device=self.hps.running.device)
 
-        with torch.no_grad():
-            belief = self.model.belief(observed, mask, action, 
-                self.hps.agent.num_belief_samples, keep_last=True)
-
         obs = to_torch(batch.obs, device=self.hps.running.device)
-        obs.belief = belief
-        obs.hist = Batch(full=full, observed=observed, mask=mask, action=action)
-
+        obs.hist = Batch(observed=observed, mask=mask, action=action)
         return obs
 
     def _update_afa_policy(self, minibatch):
@@ -156,20 +135,6 @@ class Agent(object):
             'tsk_ent_loss': ent_loss.item()
         }
 
-    def _update_model(self, minibatch):
-        inputs = self._prepare_inputs(minibatch)
-        losses = self.model.loss(inputs.hist.full, inputs.hist.mask, inputs.hist.action)
-        self.model_optimizer.zero_grad()
-        losses['model_loss'].backward()
-        if self.hps.running.grad_norm:  # clip large gradient
-            nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.hps.running.grad_norm)
-        self.model_optimizer.step()
-
-        acc = self.model.accuracy(inputs.hist.full, inputs.hist.mask, inputs.hist.action, 10)
-        losses['acc'] = acc
-
-        return losses
-
     def update_afa_policy(self, batch):
         losses, clip_losses, vf_losses, ent_losses = [], [], [], []
         for minibatch in batch.split(self.hps.running.batch_size, merge_last=True):
@@ -202,15 +167,6 @@ class Agent(object):
             "tsk_loss_ent": np.mean(ent_losses),
         }
 
-    def update_model(self, batch):
-        metrics = defaultdict(list)
-        for minibatch in batch.split(self.hps.running.batch_size, merge_last=True):
-            losses = self._update_model(minibatch)
-            for k, v in losses.items():
-                metrics[k].append(v.item())
-        
-        return {k: np.mean(v) for k, v in metrics.items()}
-
     def learn(self, afa_batch, tsk_batch):
         metrics = defaultdict(list)
 
@@ -219,7 +175,7 @@ class Agent(object):
                 afa_indices = np.random.choice(len(afa_batch), self.hps.running.batch_size)
                 afa_minibatch = afa_batch[afa_indices]
             
-            if self.update_mod or self.update_tsk:
+            if self.update_tsk:
                 tsk_indices = np.random.choice(len(tsk_batch), self.hps.running.batch_size)
                 tsk_minibatch = tsk_batch[tsk_indices]
 
@@ -227,11 +183,6 @@ class Agent(object):
                 metric = self._update_afa_policy(afa_minibatch)
                 for k, v in metric.items():
                     metrics[k].append(v)
-
-            if self.update_mod:
-                metric = self._update_model(tsk_minibatch)
-                for k, v in metric.items():
-                    metrics[k].append(v.item())
 
             if self.update_tsk:
                 metric = self._update_tsk_policy(tsk_minibatch)
@@ -243,26 +194,22 @@ class Agent(object):
 class History(object):
     def __init__(self, obs_shape, max_history_length):
         self.max_history_length = max_history_length
-        self.full = deque(maxlen=max_history_length)
         self.observed = deque(maxlen=max_history_length)
         self.mask = deque(maxlen=max_history_length)
         self.action = deque(maxlen=max_history_length)
 
         for _ in range(max_history_length):
-            self.full.append(np.zeros(obs_shape))
             self.observed.append(np.zeros(obs_shape))
             self.mask.append(np.zeros(obs_shape))
             self.action.append(-1)
 
-    def append(self, full, observed, mask, action):
-        self.full.append(full)
+    def append(self, observed, mask, action):
         self.observed.append(observed)
         self.mask.append(mask)
         self.action.append(action)
 
     def get(self):
         return Batch(
-            full=np.array(self.full),
             observed=np.array(self.observed),
             mask=np.array(self.mask),
             action=np.array(self.action)
@@ -285,25 +232,20 @@ class Runner(object):
         return Batch(observed=observed, mask=mask)
 
     @torch.no_grad()
-    def _prepare_inputs(self, full, obs, history):
-        full = np.expand_dims(np.vstack([history.full, full]), axis=0)
+    def _prepare_inputs(self, obs, history):
         observed = np.expand_dims(np.vstack([history.observed, obs.observed]), axis=0)
         mask = np.expand_dims(np.vstack([history.mask, obs.mask]), axis=0)
         action = np.expand_dims(history.action, axis=0)
 
-        full = to_torch(full, dtype=torch.float32, device=self.hps.running.device)
         observed = to_torch(observed, dtype=torch.float32, device=self.hps.running.device)
         mask = to_torch(mask, dtype=torch.float32, device=self.hps.running.device)
         action = to_torch(action, dtype=torch.long, device=self.hps.running.device)
-        belief = self.agent.model.belief(observed, mask, action, 
-            self.hps.agent.num_belief_samples, keep_last=True)
 
         new_obs = Batch()
         for k, v in obs.items():
             new_obs[k] = np.expand_dims(v, axis=0)
         obs = to_torch(new_obs, device=self.hps.running.device)
-        obs.belief = belief
-        obs.hist = Batch(full=full, observed=observed, mask=mask, action=action)
+        obs.hist = Batch(observed=observed, mask=mask, action=action)
 
         return obs
 
@@ -312,16 +254,12 @@ class Runner(object):
             rew = to_numpy(self.agent.tsk_policy.critic(inputs))[0]
         elif self.hps.agent.terminal_reward_type == 'entropy':
             rew = - to_numpy(self.agent.tsk_policy.actor(inputs).entropy())[0]
-        elif self.hps.agent.terminal_reward_type == 'impute':
-            rew = to_numpy(self.agent.model.reward(inputs.hist.full, inputs.hist.mask, inputs.hist.action, 10))[0]
         elif self.hps.agent.terminal_reward_type == 'hybrid':
             rew1 = to_numpy(self.agent.tsk_policy.critic(inputs))[0]
             rew2 = - to_numpy(self.agent.tsk_policy.actor(inputs).entropy())[0]
-            rew3 = to_numpy(self.agent.model.reward(inputs.hist.full, inputs.hist.mask, inputs.hist.action, 10))[0]
-            rew = rew1 + rew2 + rew3
+            rew = rew1 + rew2
             metrics['tsk_value_reward'] = float(rew1)
             metrics['tsk_entropy_reward'] = float(rew2)
-            metrics['model_impute_reward'] = float(rew3)
         else:
             raise NotImplementedError()
 
@@ -344,24 +282,25 @@ class Runner(object):
                 afa_env = AcquireEnv(env, state, self.hps.environment.cost)
                 obs, terminate = afa_env.reset(), False
                 afa_traj = []
-                while not terminate:
-                    inputs = self._prepare_inputs(state, obs, history.get())
-                    afa_res = self.agent.afa_policy(inputs)
-                    obs_next, reward, terminate, info = afa_env.step(to_numpy(afa_res.act)[0])
-                    if terminate and self.hps.agent.terminal_reward_weight > 0:
-                        term_rew = self._terminal_reward(inputs, metrics) # inputs is the same as the last one
-                        reward += term_rew * self.hps.agent.terminal_reward_weight
-                        metrics['afa_term_reward'] += term_rew
-                    afa_data = Batch(
-                        full=state, obs=obs, hist=history.get(), act=afa_res.act[0], rew=reward, done=terminate, 
-                        policy=Batch(logp=afa_res.policy.logp[0], vpred=afa_res.policy.vpred[0])
-                    )
-                    afa_traj.append(afa_data)
-                    metrics['episode_reward'] += reward
-                    metrics['episode_length'] += 1
-                    metrics['num_afa_actions'] += 1
-                    metrics['num_acquisitions'] += 0 if terminate else 1
-                    obs = obs_next
+                inputs = self._prepare_inputs(obs, history.get())
+                afa_res = self.agent.afa_policy(inputs)
+                obs_next, reward, terminate, info = afa_env.step(to_numpy(afa_res.act)[0])
+                assert terminate, "should acquire all features in a batch"
+                if self.hps.agent.terminal_reward_weight > 0:
+                    inputs = self._prepare_inputs(obs_next, history.get())
+                    term_rew = self._terminal_reward(inputs, metrics)
+                    reward += term_rew * self.hps.agent.terminal_reward_weight
+                    metrics['afa_term_reward'] += term_rew
+                afa_data = Batch(
+                    full=state, obs=obs, hist=history.get(), act=afa_res.act[0], rew=reward, done=terminate, 
+                    policy=Batch(logp=afa_res.policy.logp[0], vpred=afa_res.policy.vpred[0])
+                )
+                afa_traj.append(afa_data)
+                metrics['episode_reward'] += reward
+                metrics['episode_length'] += 1
+                metrics['num_afa_actions'] += 1
+                metrics['num_acquisitions'] += info['num_acquisitions']
+                obs = obs_next
                 afa_batches.append(afa_traj)
             # tsk
             tsk_data = Batch(full=state, obs=obs, hist=history.get())
@@ -369,7 +308,7 @@ class Runner(object):
                 act = env.action_space.sample()
                 tsk_data.update(act=act)
             else:
-                inputs = self._prepare_inputs(state, obs, history.get())
+                inputs = self._prepare_inputs(obs, history.get())
                 tsk_res = self.agent.tsk_policy(inputs)
                 act = to_numpy(tsk_res.act)[0]
                 tsk_data.update(act=tsk_res.act[0])
@@ -381,7 +320,7 @@ class Runner(object):
             metrics['episode_reward'] += reward
             metrics['episode_length'] += 1
             metrics['num_tsk_actions'] += 1
-            history.append(state, obs.observed, obs.mask, act)
+            history.append(obs.observed, obs.mask, act)
             state = next_state
         tsk_batches.append(tsk_traj)
 
@@ -393,7 +332,7 @@ class Runner(object):
     @torch.no_grad()
     def _process_traj(self, traj):
         batch = Batch.stack(traj)
-        if not hasattr(batch, 'policy'): return batch # random acquired
+        if not hasattr(batch, 'policy'): return batch
         vpreds = to_numpy(batch.policy.vpred)
         rewards = batch.rew
         td_errors = [rewards[t] + self.hps.agent.gamma * vpreds[t+1] - vpreds[t] for t in range(len(rewards)-1)]
@@ -431,78 +370,57 @@ class Runner(object):
         env = get_environment(self.hps.environment)
         env.seed(self.hps.running.seed)
         self.agent.setup_optimizer()
-        self.agent.set_training_status(model=True, afa=True, tsk=True)
+        self.agent.set_training_status(afa=True, tsk=True)
         writer = SummaryWriter(f'{self.hps.running.exp_dir}/summary')
 
         reward_history = []
         best_reward = -np.inf
-        best_loss = np.inf
 
-        # stage1: train model  rand_afa=True  rand_tsk=True
+        # stage1: train tsk_policy  rand_afa=True  rand_tsk=False
         logging.info('=====Stage 1=====')
-        self.agent.set_update_status(model=True, afa=False, tsk=False)
+        self.agent.set_update_status(afa=False, tsk=True)
         for step in range(self.hps.running.stage1_iterations):
-            afa_batch, tsk_batch, metrics = self.collect(env, rand_afa=True, rand_tsk=True)
+            afa_batch, tsk_batch, metrics = self.collect(env, rand_afa=True, rand_tsk=False)
             for k, v in metrics.items():
                 writer.add_scalar(f'stage1_collect/{k}', v, step)
             losses = self.agent.learn(afa_batch, tsk_batch)
             for k, v in losses.items():
                 writer.add_scalar(f'stage1_losses/{k}', v, step)
 
-            # save
-            if losses['model_loss'] <= best_loss:
-                best_loss = losses['model_loss']
-                self.agent.save('stage1_best', with_optim=True)
+            # validation
+            if step % self.hps.running.validation_freq == 0:
+                metrics = self.valid(rand_afa=True, rand_tsk=False)
+                for k, v in metrics.items():
+                    writer.add_scalar(f'stage1_valid/{k}', v, step)
+                # save
+                if metrics['task_reward'] >= best_reward:
+                    best_reward = metrics['task_reward']
+                    self.agent.save('stage1_best', with_optim=True)
         
         # save last
         self.agent.save('stage1_last', with_optim=True)
 
-        # stage2: train tsk_policy  rand_afa=True rand_tsk=False
+        # stage2: joint training
         logging.info('=====Stage 2=====')
-        self.agent.set_update_status(model=False, afa=False, tsk=True)
+        self.agent.set_update_status(afa=True, tsk=True)
         for step in range(self.hps.running.stage2_iterations):
-            afa_batch, tsk_batch, metrics = self.collect(env, rand_afa=True, rand_tsk=False)
+            afa_batch, tsk_batch, metrics = self.collect(env, rand_afa=False, rand_tsk=False)
             for k, v in metrics.items():
                 writer.add_scalar(f'stage2_collect/{k}', v, step)
             losses = self.agent.learn(afa_batch, tsk_batch)
             for k, v in losses.items():
                 writer.add_scalar(f'stage2_losses/{k}', v, step)
-
-            # validation
-            if step % self.hps.running.validation_freq == 0:
-                logging.info(f'Step: {step}')
-                metrics = self.valid(rand_afa=True, rand_tsk=False)
-                for k, v in metrics.items():
-                    writer.add_scalar(f'stage2_valid/{k}', v, step)
-                # save
-                if metrics['task_reward'] >= best_reward:
-                    best_reward = metrics['task_reward']
-                    self.agent.save('stage2_best', with_optim=True)
-        
-        # save last
-        self.agent.save('stage2_last', with_optim=True)
-
-        # stage3: joint training
-        logging.info('=====Stage 3=====')
-        self.agent.set_update_status(model=not self.hps.running.freeze_model, afa=True, tsk=True)
-        for step in range(self.hps.running.stage3_iterations):
-            afa_batch, tsk_batch, metrics = self.collect(env, rand_afa=False, rand_tsk=False)
-            for k, v in metrics.items():
-                writer.add_scalar(f'stage3_collect/{k}', v, step)
-            losses = self.agent.learn(afa_batch, tsk_batch)
-            for k, v in losses.items():
-                writer.add_scalar(f'stage3_losses/{k}', v, step)
             
             # validation
             if step % self.hps.running.validation_freq == 0:
                 logging.info(f'Step: {step}')
                 metrics = self.valid(rand_afa=False, rand_tsk=False)
                 for k, v in metrics.items():
-                    writer.add_scalar(f'stage3_valid/{k}', v, step)
+                    writer.add_scalar(f'stage2_valid/{k}', v, step)
                 # save
                 if metrics['task_reward'] >= best_reward:
                     best_reward = metrics['task_reward']
-                    self.agent.save(with_optim=False)
+                    self.agent.save()
                 # plot
                 reward_history.append(metrics['task_reward'])
                 plot_dict(f'{self.hps.running.exp_dir}/reward.png', {'reward': reward_history})
@@ -510,7 +428,7 @@ class Runner(object):
     def valid(self, rand_afa, rand_tsk):
         env = get_environment(self.hps.environment)
         env.seed(self.hps.running.seed+1)
-        self.agent.set_training_status(model=False, afa=False, tsk=False)
+        self.agent.set_training_status(afa=False, tsk=False)
 
         metrics = defaultdict(list)
         for _ in range(self.hps.running.num_valid_episodes):
@@ -522,7 +440,7 @@ class Runner(object):
 
         logging.info(f'\nValidation:\n{json.dumps(avg_metrics, indent=4)}')
 
-        self.agent.set_training_status(model=True, afa=True, tsk=True)
+        self.agent.set_training_status(afa=True, tsk=True)
 
         return avg_metrics
 
@@ -540,7 +458,7 @@ class Runner(object):
         env = get_environment(self.hps.environment)
         env.seed(self.hps.running.seed+2)
         self.agent.load()
-        self.agent.set_training_status(model=False, afa=False, tsk=False)
+        self.agent.set_training_status(afa=False, tsk=False)
 
         afa_batches = []
         tsk_batches = []
