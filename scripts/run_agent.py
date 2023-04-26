@@ -30,6 +30,9 @@ def main():
         runner.train()
     elif args.mode == 'test':
         runner.test()
+    elif args.mode == 'run':
+        runner.train()
+        runner.test()
     else:
         raise ValueError()
 
