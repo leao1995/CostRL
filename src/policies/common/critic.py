@@ -5,6 +5,8 @@ from src.networks.embed_pool import EmbeddingPool
 from src.networks.mlp import MLP
 from src.networks.xformer import ISAB, PMA
 
+## Categorical Observation
+
 class CatObsCritic(nn.Module):
     def __init__(self, config, num_embeddings):
         super().__init__()
@@ -52,6 +54,51 @@ class CatPHistCritic(nn.Module):
         values = self.critic(embed)
 
         return values.squeeze(dim=1)
+
+## Continuous Observation
+
+class ConObsCritic(nn.Module):
+    def __init__(self, config, observation_dim):
+        super().__init__()
+
+        self.critic = MLP(observation_dim, config.critic_layers, 1)
+
+    def forward(self, obs):
+        values = self.critic(obs)
+
+        return values.squeeze(dim=1)
+
+class ConPObsCritic(nn.Module):
+    def __init__(sel, config, observation_dim):
+        super().__init__()
+
+        embed_dim = observation_dim * 2
+        self.critic = MLP(embed_dim, config.critic_layers, 1)
+
+    def forward(self, obs):
+        embed = torch.cat([obs.observed, obs.mask], dim=1)
+        values = self.critic(embed)
+
+        return values.squeeze(dim=1)
+
+class ConPHistCritic(nn.Module):
+    def __init__(self, config, observation_dim):
+        super().__init__()
+
+        hist_dim = observation_dim * 2
+        self.embed_net = MLP(hist_dim, config.hist_embed_dims)
+        embed_dim = self.embed_net.output_dim
+        self.critic = MLP(embed_dim, config.critic_layers, 1)
+
+    def forward(self, obs):
+        hist_embed = torch.cat([obs.hist.observed, obs.hist.mask], dim=2)
+        assert hist_embed.ndim == 3
+        embed = self.embed_net(hist_embed).mean(dim=1)
+        values = self.critic(embed)
+
+        return values.squeeze(dim=1)
+
+## Belief Set
 
 class BeliefSetCritic(nn.Module):
     def __init__(self, config, belief_dim):

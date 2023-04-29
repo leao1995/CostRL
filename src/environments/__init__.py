@@ -6,6 +6,11 @@ register(
     entry_point='src.environments.sepsis.sepsis_env:SepsisEnv'
 )
 
+register(
+    id='cartpole-v0',
+    entry_point='src.environments.cartpole.cartpole_env:CartPoleEnv'
+)
+
 from .episode_length_wrapper import EpisodeLengthWrapper
 
 def get_environment(config):

@@ -144,3 +144,33 @@ class CatDecoder(nn.Module):
         logits = out.split(self.num_classes_per_dim, dim=-1)
         dist = [D.Categorical(logits=logit) for logit in logits]
         return dist
+    
+class ConDecoder(nn.Module):
+    def __init__(
+        self,
+        input_dim,
+        peq_hidden_dims,
+        output_dim,
+        num_heads=8,
+        num_inds=16,
+        ln=False
+    ):
+        super().__init__()
+
+        peq_layers = []
+        for dim in peq_hidden_dims:
+            peq_layers.append(ISAB(input_dim, dim, num_heads, num_inds, ln))
+            input_dim = dim
+        self.peq_layers = nn.Sequential(*peq_layers)
+
+        out_layers = []
+        out_layers.append(nn.Linear(input_dim, output_dim))
+        out_layers.append(nn.ReLU(inplace=True))
+        out_layers.append(nn.Linear(output_dim, output_dim))
+        self.out_layers = nn.Sequential(*out_layers)
+
+    def forward(self, x):
+        assert x.ndim == 3, 'assume inputs are of size [B,T,d]'
+        peq_embed = self.peq_layers(x)
+        out = self.out_layers(peq_embed)
+        return out

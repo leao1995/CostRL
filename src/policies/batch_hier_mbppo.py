@@ -2,20 +2,39 @@ from .common.actor import BeliefSetActor, BeliefEnsActor
 from .common.critic import BeliefSetCritic, BeliefEnsCritic
 from .common.actor_critic import ActorCritic
 
-def build_afa_policy(config, belief_dim, num_afa_actions):
-    if config.belief_embed_type == "set":
-        actor = BeliefSetActor(config, belief_dim, num_afa_actions, False)
-        critic = BeliefSetCritic(config, belief_dim)
-    elif config.belief_embed_type == "ensemble":
-        actor = BeliefEnsActor(config, belief_dim, num_afa_actions, False)
-        critic = BeliefEnsCritic(config, belief_dim)
-    return ActorCritic(actor, critic)
+class PolicyBuilder:
+    def __init__(self, env, config):
+        self.env = env
+        self.config = config
 
-def build_tsk_policy(config, belief_dim, num_tsk_actions):
-    if config.belief_embed_type == "set":
-        actor = BeliefSetActor(config, belief_dim, num_tsk_actions, False)
-        critic = BeliefSetCritic(config, belief_dim)
-    elif config.belief_embed_type == "ensemble":
-        actor = BeliefEnsActor(config, belief_dim, num_tsk_actions, False)
-        critic = BeliefEnsCritic(config, belief_dim)
-    return ActorCritic(actor, critic)
+    def build_afa_policy(self):
+        # environment specific hyperparameters
+        obs_high = self.env.observation_space.high
+        num_embeddings = list(map(int, obs_high + 2))
+        belief_dim = self.config.belief_dim
+        num_afa_actions = 2 ** self.env.num_measurable_features
+        num_tsk_actions = self.env.action_space.n
+
+        if self.config.belief_embed_type == "set":
+            actor = BeliefSetActor(self.config, belief_dim, num_afa_actions, False)
+            critic = BeliefSetCritic(self.config, belief_dim)
+        elif self.config.belief_embed_type == "ensemble":
+            actor = BeliefEnsActor(self.config, belief_dim, num_afa_actions, False)
+            critic = BeliefEnsCritic(self.config, belief_dim)
+        return ActorCritic(actor, critic)
+
+    def build_tsk_policy(self):
+        # environment specific hyperparameters
+        obs_high = self.env.observation_space.high
+        num_embeddings = list(map(int, obs_high + 2))
+        belief_dim = self.config.belief_dim
+        num_afa_actions = 2 ** self.env.num_measurable_features
+        num_tsk_actions = self.env.action_space.n
+
+        if self.config.belief_embed_type == "set":
+            actor = BeliefSetActor(self.config, belief_dim, num_tsk_actions, False)
+            critic = BeliefSetCritic(self.config, belief_dim)
+        elif self.config.belief_embed_type == "ensemble":
+            actor = BeliefEnsActor(self.config, belief_dim, num_tsk_actions, False)
+            critic = BeliefEnsCritic(self.config, belief_dim)
+        return ActorCritic(actor, critic)

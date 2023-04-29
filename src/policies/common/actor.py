@@ -6,6 +6,8 @@ from src.networks.embed_pool import EmbeddingPool
 from src.networks.mlp import MLP
 from src.networks.xformer import ISAB, PMA
 
+## Categorical Observation
+
 class CatObsActor(nn.Module):
     def __init__(self, config, num_embeddings, num_actions, logit_constraint):
         super().__init__()
@@ -52,7 +54,7 @@ class CatPObsActor(nn.Module):
             logits = torch.where(availability, logits, min_value)
         dist = Categorical(logits=logits)
         return dist
-    
+ 
 class CatPHistActor(nn.Module):
     def __init__(self, config, num_embeddings, num_actions, logit_constraint):
         super().__init__()
@@ -82,6 +84,79 @@ class CatPHistActor(nn.Module):
             logits = torch.where(availability, logits, min_value)
         dist = Categorical(logits=logits)
         return dist
+
+## Continuous Observation
+
+class ConObsActor(nn.Module):
+    def __init__(self, config, observation_dim, num_actions, logit_constraint):
+        super().__init__()
+
+        self.actor = MLP(observation_dim, config.actor_layers, num_actions)
+
+        self.temperature = 1.0
+
+        assert logit_constraint is False, 'fully observed actor do not need to postprocess logits'
+
+    def set_temperature(self, temp):
+        self.temperature = temp
+
+    def forward(self, obs):
+        logits = self.actor(obs) / self.temperature
+        dist = Categorical(logits=logits)
+        return dist
+    
+class ConPObsActor(nn.Module):
+    def __init__(self, config, observation_dim, num_actions, logit_constraint):
+        super().__init__()
+
+        embed_dim = observation_dim * 2
+        self.actor = MLP(embed_dim, config.actor_layers, num_actions)
+
+        self.temperature = 1.0
+
+        self.logit_constraint = logit_constraint
+
+    def set_temperature(self, temp):
+        self.temperature = temp
+
+    def forward(self, obs):
+        embed = torch.cat([obs.observed, obs.mask], dim=1)
+        logits = self.actor(embed) / self.temperature
+        if self.logit_constraint:
+            availability = obs.availability.bool()
+            min_value = torch.tensor(-1e12).to(logits)
+            logits = torch.where(availability, logits, min_value)
+        dist = Categorical(logits=logits)
+        return dist
+    
+class ConPHistActor(nn.Module):
+    def __init__(self, config, obsrvation_dim, num_actions, logit_constraint):
+        super().__init__()
+
+        hist_dim = observation_dim * 2
+        self.embed_net = MLP(hist_dim, config.hist_embed_dims)
+        embed_dim = self.embed_net.output_dim
+        self.actor = MLP(embed_dim, config.actor_layers, num_actions)
+
+        self.temperature = 1.0
+
+        self.logit_constraint = logit_constraint
+
+    def set_temperature(self, temp):
+        self.temperature = temp
+
+    def forward(self, obs):
+        hist_embed = torch.cat([obs.hist.observed, obs.hist.mask], dim=2)
+        embed = self.embed_net(hist_embed).mean(dim=1)
+        logits = self.actor(embed) / self.temperature
+        if self.logit_constraint:
+            availability = obs.availability.bool()
+            min_value = torch.tensor(-1e12).to(logits)
+            logits = torch.where(availability, logits, min_value)
+        dist = Categorical(logits=logits)
+        return dist
+
+## Belief Set
 
 class BeliefSetActor(nn.Module):
     def __init__(self, config, belief_dim, num_actions, logit_constraint):

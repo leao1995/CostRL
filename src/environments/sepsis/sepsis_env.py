@@ -18,6 +18,9 @@ class SepsisEnv(gym.Env):
         self.num_measurable_features = 4
         self.measurable_feature_ids = [0, 1, 2, 3]
 
+        self.observation_type = "Categorical"
+        self.action_type = "Discrete"
+
     def step(self, action):
         done = False
         reward = self.mdp.transition(Action(action_idx=action))

@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tianshou.data import Batch, to_numpy, to_torch, to_torch_as
 
 from src.environments import get_environment
-from src.policies.fully_observed_ppo import *
+from src.policies.fully_observed_ppo import PolicyBuilder
 from src.utils.visualizer import plot_dict
 
 class Agent(object):
@@ -21,12 +21,9 @@ class Agent(object):
         self.hps = hps
 
     def _setup(self, env):
-        # environment specific hyperparameters
-        obs_high = env.observation_space.high
-        num_embeddings = list(map(int, obs_high + 1))
-        num_actions = env.action_space.n
+        policy_builder = PolicyBuilder(env, self.hps.policy)
         
-        self.policy = build_policy(self.hps.policy, num_embeddings, num_actions)
+        self.policy = policy_builder.build_policy()
         self.policy.to(self.hps.running.device)
 
         logging.info(f'\npolicy:\n{self.policy}\n')

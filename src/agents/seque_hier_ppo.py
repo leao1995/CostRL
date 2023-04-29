@@ -14,7 +14,7 @@ from tianshou.data import Batch, to_numpy, to_torch, to_torch_as
 
 from src.environments import get_environment
 from src.environments.seque_acquire_env import AcquireEnv
-from src.policies.seque_hier_ppo import *
+from src.policies.seque_hier_ppo import PolicyBuilder
 from src.utils.visualizer import plot_dict
 
 class Agent(object):
@@ -22,15 +22,11 @@ class Agent(object):
         self.hps = hps
 
     def _setup(self, env):
-        # environment specific hyperparameters
-        obs_high = env.observation_space.high
-        num_embeddings = list(map(int, obs_high + 2))
-        num_afa_actions = env.num_measurable_features + 1 # termination action
-        num_tsk_actions = env.action_space.n
+        policy_builder = PolicyBuilder(env, self.hps.policy)
 
-        self.afa_policy = build_afa_policy(self.hps.policy, num_embeddings, num_afa_actions)
+        self.afa_policy = policy_builder.build_afa_policy()
         self.afa_policy.to(self.hps.running.device)
-        self.tsk_policy = build_tsk_policy(self.hps.policy, num_embeddings, num_tsk_actions)
+        self.tsk_policy = policy_builder.build_tsk_policy()
         self.tsk_policy.to(self.hps.running.device)
 
         logging.info(f'\nafa_policy:\n{self.afa_policy}\n')
