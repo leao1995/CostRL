@@ -211,6 +211,6 @@ class POExVAE(nn.Module):
         decoder_samp = self.impute(state, mask, action, num_samples)
         decoder_samp = decoder_samp.permute(1,2,0,3) #[B,T,N,d]
         if keep_last:
-            decoder_samp_embed = decoder_samp_embed[:,-1] #[B,N,d]
+            decoder_samp = decoder_samp[:,-1] #[B,N,d]
 
-        return decoder_samp_embed
+        return decoder_samp

@@ -130,7 +130,7 @@ class ConPObsActor(nn.Module):
         return dist
     
 class ConPHistActor(nn.Module):
-    def __init__(self, config, obsrvation_dim, num_actions, logit_constraint):
+    def __init__(self, config, observation_dim, num_actions, logit_constraint):
         super().__init__()
 
         hist_dim = observation_dim * 2

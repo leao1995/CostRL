@@ -7,7 +7,7 @@ class PolicyBuilder:
         self.env = env
         self.config = config
 
-    def build_afa_policy():
+    def build_afa_policy(self):
         if self.env.observation_type == "Categorical" and self.env.action_type == "Discrete":
             # environment specific hyperparameters
             obs_high = self.env.observation_space.high
@@ -29,7 +29,7 @@ class PolicyBuilder:
             critic = ConPHistCritic(self.config, obs_dim)
             return ActorCritic(actor, critic)
 
-    def build_tsk_policy():
+    def build_tsk_policy(self):
         if self.env.observation_type == "Categorical" and self.env.action_type == "Discrete":
             # environment specific hyperparameters
             obs_high = self.env.observation_space.high

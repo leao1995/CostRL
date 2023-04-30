@@ -9,10 +9,10 @@ class PolicyBuilder:
 
     def build_policy(self):
         # environment specific hyperparameters
-        obs_high = env.observation_space.high
+        obs_high = self.env.observation_space.high
         num_embeddings = list(map(int, obs_high + 2))
         belief_dim = self.config.belief_dim
-        num_actions = env.num_measurable_features + env.action_space.n
+        num_actions = self.env.num_measurable_features + self.env.action_space.n
 
         if self.config.belief_embed_type == "set":
             actor = BeliefSetActor(self.config, belief_dim, num_actions, True)

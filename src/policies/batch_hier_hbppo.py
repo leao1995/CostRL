@@ -37,8 +37,8 @@ class PolicyBuilder:
             num_afa_actions = 2 ** self.env.num_measurable_features
             num_tsk_actions = self.env.action_space.n
 
-            actor = CatPHistActor(config, num_embeddings, num_tsk_actions, False)
-            critic = CatPHistCritic(config, num_embeddings)
+            actor = CatPHistActor(self.config, num_embeddings, num_tsk_actions, False)
+            critic = CatPHistCritic(self.config, num_embeddings)
             return ActorCritic(actor, critic)
 
         if self.env.observation_type == "Continuous" and self.env.action_type == "Discrete":
@@ -47,6 +47,6 @@ class PolicyBuilder:
             num_afa_actions = 2 ** self.env.num_measurable_features
             num_tsk_actions = self.env.action_space.n
 
-            actor = ConPHistActor(config, obs_dim, num_tsk_actions, False)
-            critic = ConPHistCritic(config, obs_dim)
+            actor = ConPHistActor(self.config, obs_dim, num_tsk_actions, False)
+            critic = ConPHistCritic(self.config, obs_dim)
             return ActorCritic(actor, critic)
