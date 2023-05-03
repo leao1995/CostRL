@@ -211,7 +211,7 @@ class Runner(object):
         elif self.hps.agent.terminal_reward_type == 'hybrid':
             rew1 = to_numpy(self.agent.tsk_policy.critic(inputs))[0]
             rew2 = - to_numpy(self.agent.tsk_policy.actor(inputs).entropy())[0]
-            rew = rew1 + rew2
+            rew = rew1 * self.hps.agent.tsk_value_term_weight + rew2 * self.hps.agent.tsk_entropy_term_weight
             metrics['tsk_value_reward'] = float(rew1)
             metrics['tsk_entropy_reward'] = float(rew2)
         else:

@@ -314,7 +314,7 @@ class Runner(object):
             rew1 = to_numpy(self.agent.tsk_policy.critic(inputs))[0]
             rew2 = - to_numpy(self.agent.tsk_policy.actor(inputs).entropy())[0]
             rew3 = to_numpy(self.agent.model.reward(inputs.hist.full, inputs.hist.mask, inputs.hist.action, 10))[0]
-            rew = rew1 + rew2 + rew3
+            rew = rew1 * self.hps.agent.tsk_value_term_weight + rew2 * self.hps.agent.tsk_entropy_term_weight + rew3 * self.mod_impute_term_weight
             metrics['tsk_value_reward'] = float(rew1)
             metrics['tsk_entropy_reward'] = float(rew2)
             metrics['model_impute_reward'] = float(rew3)
