@@ -69,7 +69,7 @@ class ConObsCritic(nn.Module):
         return values.squeeze(dim=1)
 
 class ConPObsCritic(nn.Module):
-    def __init__(sel, config, observation_dim):
+    def __init__(self, config, observation_dim):
         super().__init__()
 
         embed_dim = observation_dim * 2
