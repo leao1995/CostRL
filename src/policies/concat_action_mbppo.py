@@ -9,8 +9,6 @@ class PolicyBuilder:
 
     def build_policy(self):
         # environment specific hyperparameters
-        obs_high = self.env.observation_space.high
-        num_embeddings = list(map(int, obs_high + 2))
         belief_dim = self.config.belief_dim
         num_actions = self.env.num_measurable_features + self.env.action_space.n
 

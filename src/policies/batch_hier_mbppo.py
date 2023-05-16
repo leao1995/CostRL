@@ -9,8 +9,6 @@ class PolicyBuilder:
 
     def build_afa_policy(self):
         # environment specific hyperparameters
-        obs_high = self.env.observation_space.high
-        num_embeddings = list(map(int, obs_high + 2))
         belief_dim = self.config.belief_dim
         num_afa_actions = 2 ** self.env.num_measurable_features
         num_tsk_actions = self.env.action_space.n
@@ -25,8 +23,6 @@ class PolicyBuilder:
 
     def build_tsk_policy(self):
         # environment specific hyperparameters
-        obs_high = self.env.observation_space.high
-        num_embeddings = list(map(int, obs_high + 2))
         belief_dim = self.config.belief_dim
         num_afa_actions = 2 ** self.env.num_measurable_features
         num_tsk_actions = self.env.action_space.n
