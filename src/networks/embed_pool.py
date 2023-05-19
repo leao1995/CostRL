@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.jit as jit
 
-class EmbeddingPool(jit.ScriptModule):
+class EmbeddingPool(nn.Module):
     def __init__(self, num_embeddings, embedding_dim):
         super().__init__()
 
@@ -11,7 +11,6 @@ class EmbeddingPool(jit.ScriptModule):
         ])
         self.output_dim = embedding_dim * len(num_embeddings)
 
-    @jit.script_method
     def forward(self, x):        
         embed = []
         for i, module in enumerate(self.pool):

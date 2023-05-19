@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.jit as jit
 
-class ConvNet(jit.ScriptModule):
+class ConvNet(nn.Module):
     def __init__(
         self,
         input_dim,
@@ -35,6 +35,5 @@ class ConvNet(jit.ScriptModule):
         self.layers = nn.Sequential(*layers)
         self.output_dim = output_dim or input_dim
 
-    @jit.script_method
     def forward(self, x):
         return self.layers(x)

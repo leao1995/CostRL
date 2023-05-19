@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.jit as jit
 
-class MLP(jit.ScriptModule):
+class MLP(nn.Module):
     def __init__(
         self,
         input_dim,
@@ -28,6 +28,5 @@ class MLP(jit.ScriptModule):
         self.layers = nn.Sequential(*layers)
         self.output_dim = output_dim or hidden_dims[-1]
 
-    @jit.script_method
     def forward(self, x):
         return self.layers(x)
